@@ -1,0 +1,16 @@
+#default_opacity: 90
+
+#specific_windows:
+#  - title: "Notepad"
+#    opacity: 80
+#  - executable: "chrome.exe"
+#    opacity: 95
+#  - title: "PowerShell"
+#    executable: "WindowsTerminal.exe"
+#    opacity: 92
+#  - executable: "VSCodium.exe"
+#    opacity: 94
+#  - executable: "explorer.exe"
+#    opacity: 100
+#  - executable: "msedge.exe"
+#    opacity: 100
