@@ -1,4 +1,6 @@
-use iced::{widget::{Button, Column, Text}, Application, Element, Settings, Theme, Command};
+use std::ffi::c_void;
+use iced::{widget::{Button, Column, Row, Text, Container, Scrollable}, Length, Alignment, Color, Application, Theme, Command, Element, window};
+use iced::theme;
 use windows::{
     Win32::Foundation::*,
     Win32::UI::WindowsAndMessaging::*,
@@ -8,7 +10,8 @@ use windows::Win32::System::ProcessStatus::*;
 use windows::Win32::System::Threading::*;
 use std::path::PathBuf;
 use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_FRAME, RDW_INVALIDATE, RDW_UPDATENOW};
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
+use iced::widget::{Checkbox, Slider};
 use once_cell::sync::Lazy;
 
 mod config;
@@ -18,8 +21,8 @@ use config::{Config, load_config};
 static WINDOW_INFO_BUFFER: Lazy<Mutex<Vec<WindowInfo>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 fn main() -> iced::Result {
-    let settings = Settings {
-        window: iced::window::Settings {
+    let settings = iced::Settings {
+        window: window::Settings {
             size: iced::Size::new(700.0, 900.0),
             resizable: false,
             ..Default::default()
@@ -33,6 +36,9 @@ fn main() -> iced::Result {
 struct WindowManager {
     config: Config,
     windows: Vec<WindowInfo>,
+    selected_window: Option<usize>,
+    current_transparency: u8,
+    persist_setting: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -43,12 +49,19 @@ struct WindowInfo {
     size: (i32, i32),
     is_cloaked: bool,
     transparency: String,
+    hwnd: HWND,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     RefreshWindows,
+    SelectWindow(usize),
+    UpdateTransparency(u8),
+    TogglePersist(bool),
 }
+
+unsafe impl Send for WindowInfo {}
+unsafe impl Sync for WindowInfo {}
 
 impl Application for WindowManager {
     type Executor = iced::executor::Default;
@@ -61,6 +74,9 @@ impl Application for WindowManager {
             WindowManager {
                 config,
                 windows: Vec::new(),
+                selected_window: None,
+                current_transparency: 0,
+                persist_setting: false,
             },
             Command::none(),
         )
@@ -73,39 +89,127 @@ impl Application for WindowManager {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::RefreshWindows => {
+                // Clear existing windows list
                 self.windows.clear();
+
+                // Clear the global buffer
+                WINDOW_INFO_BUFFER.lock().unwrap().clear();
+
+                // Enumerate windows and collect info
                 unsafe {
-                    EnumWindows(Some(enum_window), LPARAM(&self.config as *const Config as isize))
-                        .expect("Failed to enumerate windows");
+                    EnumWindows(Some(enum_window), LPARAM(&self.config as *const _ as isize)).expect("TODO: panic message");
                 }
 
-                // Transfer the collected window info
-                let mut buffer = WINDOW_INFO_BUFFER.lock().unwrap();
-                self.windows.append(&mut buffer);
-                buffer.clear();
+                // Move windows from buffer to our state
+                self.windows = WINDOW_INFO_BUFFER.lock().unwrap().drain(..).collect();
+
+                // Reset selection
+                self.selected_window = None;
+            }
+            Message::SelectWindow(index) => {
+                self.selected_window = Some(index);
+                let window = &self.windows[index];
+                self.current_transparency = window.transparency
+                    .trim_end_matches('%')
+                    .parse()
+                    .unwrap_or(100);
+                self.persist_setting = self.config.specific_windows.iter().any(|w|
+                    w.title.as_ref().map_or(false, |t| t == &window.title) ||
+                        w.executable.as_ref().map_or(false, |e| e == &window.exe_name)
+                );
+            }
+            Message::UpdateTransparency(value) => {
+                self.current_transparency = value;
+                if let Some(index) = self.selected_window {
+                    let window = &self.windows[index];
+                    set_window_transparency(window.hwnd, value).unwrap_or_else(|_| println!("Failed to set transparency"));
+                }
+            }
+            Message::TogglePersist(value) => {
+                self.persist_setting = value;
+                // Logic to update config
             }
         }
         Command::none()
     }
-
     fn view(&self) -> Element<Message> {
+        let title = Text::new("Window Manager")
+            .size(40)
+            .style(Color::from([0.5, 0.5, 0.5]));
+
         let refresh_button = Button::new(Text::new("Refresh Windows"))
-            .on_press(Message::RefreshWindows);
+            .on_press(Message::RefreshWindows)
+            .padding(10);
 
-        let mut column = Column::new().push(refresh_button);
+        let header = Row::new()
+            .push(title)
+            .push(refresh_button)
+            .align_items(Alignment::Center)
+            .spacing(20);
 
-        for window in &self.windows {
-            column = column
-                .push(Text::new(format!("Title: {}", window.title)))
-                .push(Text::new(format!("Executable: {}", window.exe_name)))
-                .push(Text::new(format!("Class: {}", window.class_name)))
-                .push(Text::new(format!("Size: {}x{}", window.size.0, window.size.1)))
-                .push(Text::new(format!("Cloaked: {}", window.is_cloaked)))
-                .push(Text::new(format!("Transparency: {}", window.transparency)))
-                .push(Text::new(" "));
-        }
+        let selected_info = if let Some(index) = self.selected_window {
+            let window = &self.windows[index];
+            format!("{} ({})", window.title, window.exe_name)
+        } else {
+            "No window selected".to_string()
+        };
 
-        column.into()
+        let selected_info_text = Text::new(selected_info).size(16);
+
+        let transparency_section = Row::new()
+//            .push(Text::new(selected_info))
+            .push(Slider::new(
+                0..=100,
+                self.current_transparency,
+                Message::UpdateTransparency,
+            ))
+            .push(Text::new(format!("{}%", self.current_transparency)).size(14))
+            .push(Checkbox::new(
+                "Persist",
+                self.persist_setting,
+            ).on_toggle(Message::TogglePersist))
+            .spacing(20);
+
+        let windows_list = self.windows.iter().enumerate().fold(
+            Column::new().spacing(10),
+            |column, (index, window)| {
+                column.push(
+                    Button::new(
+                        Container::new(
+                            Column::new()
+                                .push(Text::new(&window.title).size(18))
+                                .push(Text::new(format!("Executable: {}", window.exe_name)).size(12))
+                                .push(Text::new(format!("Transparency: {}", window.transparency)).size(12))
+                        )
+                            .style(theme::Container::Box)
+                            .padding(10)
+                    )
+                        .on_press(Message::SelectWindow(index))
+                        .style(if Some(index) == self.selected_window {
+                            theme::Button::Primary
+                        } else {
+                            theme::Button::Secondary
+                        })
+                )
+            }
+        );
+
+        let content = Scrollable::new(windows_list)
+            .height(Length::Fill)
+            .width(Length::Fill);
+
+        Container::new(
+            Column::new()
+                .push(header)
+                .push(selected_info_text)
+                .push(transparency_section)
+                .push(content)
+                .spacing(20)
+        )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(20)
+            .into()
     }
 }
 
@@ -141,6 +245,7 @@ extern "system" fn enum_window(window: HWND, lparam: LPARAM) -> BOOL {
                     size: (width, height),
                     is_cloaked,
                     transparency,
+                    hwnd: window
                 };
 
                 WINDOW_INFO_BUFFER.lock().unwrap().push(window_info);
