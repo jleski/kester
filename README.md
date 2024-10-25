@@ -1,5 +1,7 @@
 # 🪟 Windows Transparency Wizard 🧙‍♂️
 
+![Windows Transparency Wizard](kester-the-banner.png)
+
 Hey there, cool cats! Welcome to the Windows Transparency Wizard, a groovy little Rust application that lets you jazz up your Windows experience by tweaking the transparency of your open windows. Now with a slick GUI and system tray support!
 
 ## 🌟 Features
