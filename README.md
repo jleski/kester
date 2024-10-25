@@ -1,14 +1,16 @@
 # 🪟 Windows Transparency Wizard 🧙‍♂️
 
-Hey there, cool cats! Welcome to the Windows Transparency Wizard, a groovy little Rust application that lets you jazz up your Windows experience by tweaking the transparency of your open windows. It's like giving your desktop a pair of funky sunglasses!
+Hey there, cool cats! Welcome to the Windows Transparency Wizard, a groovy little Rust application that lets you jazz up your Windows experience by tweaking the transparency of your open windows. Now with a slick GUI and system tray support!
 
 ## 🌟 Features
 
-- Lists all visible windows with their titles, classes, and more
-- Grabs the executable name for each window (how's that for detective work?)
-- Checks out the current transparency level of each window
-- Sets custom transparency levels based on your configuration
-- Keeps it cool by not messing with windows you don't specify
+- Sleek graphical interface to manage window transparency
+- System tray integration - keep it running in the background
+- Live window transparency preview and adjustment
+- Persistent settings for your favorite windows
+- Global default opacity setting for all windows
+- Real-time window list refresh
+- Smart window detection by title or executable name
 
 ## 🚀 Getting Started
 
@@ -35,19 +37,25 @@ specific_windows:
     opacity: 85
 ```
 
-* If you set `default_opacity`, all windows get that funky tint
-* Add windows to `specific_windows` to give them their own unique vibe
-* You can specify windows by `title`, `executable`, or `both`
-* Set `opacity` to 100 to keep a window fully opaque (no sunglasses needed!)
+* Toggle default opacity right from the GUI
+* Save window-specific settings with a single click
+* Settings persist automatically when you make changes
+* Mix and match window titles and executables
+* Set opacity from 0-100% using the slider
 
 ## 🛠️ How It Works
 
-This wizard uses some powerful Rust incantations (powered by the `windows` crate) to communicate with the Windows API. It's like speaking the secret language of your operating system!
+This wizard uses some powerful Rust incantations powered by:
+
+* `iced`: For that sweet, sweet GUI goodness
+* `windows` crate: Speaking the secret language of your OS
+* `serde`: Handling configuration magic
+* System tray integration for background vibes
 
 The main spell components are:
 
-* `main.rs`: The heart of the operation, enumerating windows and setting transparency
-* `config.rs`: Handles the loading and parsing of your groovy configuration
+* `main.rs`: The heart of the operation with the new GUI implementation
+* `config.rs`: Handles loading, saving, and parsing of your groovy configuration
 * `config.yaml`: Your personal spellbook for customizing window transparency
 
 ## 🎭 Contributing
